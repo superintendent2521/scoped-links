@@ -1,0 +1,11 @@
+.gradle/
+build/
+run/
+runs/
+out/
+*.iml
+.idea/
+.vscode/
+.jdk21/
+.gradle-user-home/
+.gradle/wrapper/

@@ -1,0 +1,19 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.superintendent.sablescopedlinks.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "LinkedControllerServerHandlerMixin",
+    "RapierConstraintHandleMixin",
+    "RapierPhysicsPipelineMixin",
+    "RapierRopeHandleMixin",
+    "RedstoneLinkConditionMixin",
+    "RedstoneLinkNetworkHandlerMixin",
+    "RopePhysicsObjectMixin",
+    "SimulatedServerRopeStrandMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
