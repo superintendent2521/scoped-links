@@ -69,7 +69,7 @@ public final class LinkScopeResolver {
             LinkScope controllerScope = scopeFor(fallbackWorld, controller);
             LinkScope receiverScope = LinkScope.subLevel(
                     dimensionKey(fallbackWorld),
-                    subLevelScopeIdentity(fallbackWorld, receiverSubLevel.get()));
+                    subLevelScopeIdentity(receiverSubLevel.get()));
             return controllerScope.apiResolved() && receiverScope.apiResolved()
                     && scopesMayCommunicate(mode, controllerScope, receiverScope);
         }
@@ -126,7 +126,7 @@ public final class LinkScopeResolver {
 
         Optional<Object> plotSubLevel = SABLE.getContaining(world, pos);
         if (plotSubLevel.isPresent()) {
-            LinkScope scope = LinkScope.subLevel(dimensionKey(world), subLevelScopeIdentity(world, plotSubLevel.get()));
+            LinkScope scope = LinkScope.subLevel(dimensionKey(world), subLevelScopeIdentity(plotSubLevel.get()));
             LINKED_CONTROLLER_SCOPE.set(scope);
             return;
         }
@@ -136,7 +136,7 @@ public final class LinkScopeResolver {
             return;
         }
 
-        LinkScope scope = LinkScope.subLevel(dimensionKey(world), subLevelScopeIdentity(world, physicalSubLevel.get()));
+        LinkScope scope = LinkScope.subLevel(dimensionKey(world), subLevelScopeIdentity(physicalSubLevel.get()));
         LINKED_CONTROLLER_SCOPE.set(scope);
     }
 
@@ -199,12 +199,12 @@ public final class LinkScopeResolver {
 
         Optional<Object> subLevel = SABLE.getContaining(world, pos.get());
         if (subLevel.isPresent()) {
-            return LinkScope.subLevel(dimension, subLevelScopeIdentity(world, subLevel.get()));
+            return LinkScope.subLevel(dimension, subLevelScopeIdentity(subLevel.get()));
         }
 
         Optional<Object> physicalSubLevel = SABLE.getIntersectingPhysical(world, pos.get());
         if (physicalSubLevel.isPresent()) {
-            return LinkScope.subLevel(dimension, subLevelScopeIdentity(world, physicalSubLevel.get()));
+            return LinkScope.subLevel(dimension, subLevelScopeIdentity(physicalSubLevel.get()));
         }
 
         return LinkScope.world(dimension, SABLE.isAvailable());
@@ -225,7 +225,7 @@ public final class LinkScopeResolver {
         Optional<Object> unwrappedTrackingSubLevel = trackingSubLevel.flatMap(LinkScopeResolver::unwrapOptional);
         if (unwrappedTrackingSubLevel.isPresent() && !isRemoved(unwrappedTrackingSubLevel.get())) {
             Object subLevel = unwrappedTrackingSubLevel.get();
-            return Optional.of(LinkScope.subLevel(dimension, subLevelScopeIdentity(world, subLevel)));
+            return Optional.of(LinkScope.subLevel(dimension, subLevelScopeIdentity(subLevel)));
         }
 
         Optional<Object> plotPosition = reflectNoArg(entity, "sable$getPlotPosition");
@@ -234,7 +234,7 @@ public final class LinkScopeResolver {
         }
 
         Optional<Object> subLevel = SABLE.getContaining(world, BlockPos.containing(pos));
-        return subLevel.map(value -> LinkScope.subLevel(dimension, subLevelScopeIdentity(world, value)));
+        return subLevel.map(value -> LinkScope.subLevel(dimension, subLevelScopeIdentity(value)));
     }
 
     private static boolean isRemoved(Object subLevel) {
@@ -322,8 +322,8 @@ public final class LinkScopeResolver {
         return subLevel;
     }
 
-    private static Object subLevelScopeIdentity(Object world, Object subLevel) {
-        return AttachedSubLevelScopeRegistry.componentIdentity(world, subLevel)
+    private static Object subLevelScopeIdentity(Object subLevel) {
+        return AttachedSubLevelScopeRegistry.componentIdentity(subLevel)
                 .orElseGet(() -> subLevelIdentity(subLevel));
     }
 

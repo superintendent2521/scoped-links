@@ -13,17 +13,15 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.WeakHashMap;
 
 import com.superintendent.sablescopedlinks.SableScopedLinks;
+
 public final class AttachedSubLevelScopeRegistry {
     private static final List<Edge> EDGES = new ArrayList<>();
     private static final IdentityHashMap<Object, RopeLink> ROPES = new IdentityHashMap<>();
-    private static final Map<Object, RopeLink> ROPES_BY_HANDLE = new HashMap<>();
+    private static final IdentityHashMap<Object, RopeLink> ROPES_BY_HANDLE = new IdentityHashMap<>();
     private static final Map<BodyKey, Object> COMPONENT_BY_BODY = new HashMap<>();
-    private static final IdentityHashMap<Object, BodyKey> BODY_KEYS = new IdentityHashMap<>();
     private static final Map<Class<?>, Optional<Method>> SUB_LEVEL_CONTAINER_GETTERS = new HashMap<>();
-    private static final Map<Object, Map<UUID, Object>> SUB_LEVELS_BY_UUID_BY_LEVEL = new WeakHashMap<>();
     private static boolean dirty = true;
 
     private AttachedSubLevelScopeRegistry() {
@@ -78,12 +76,10 @@ public final class AttachedSubLevelScopeRegistry {
         RopeLink link = ROPES.computeIfAbsent(rope, ignored -> new RopeLink(rope));
         BodyKey previousStart = bodyKeyOrNull(link.startBody);
         BodyKey previousEnd = bodyKeyOrNull(link.endBody);
-        Object previousHandle = link.handle;
-        link.handle = handle;
+        boolean handleChanged = setRopeHandle(link, handle);
         syncRopeFields(link);
-        ROPES_BY_HANDLE.put(handle, link);
         logRopeState("rope-handle-created", "HANDLE", link);
-        dirty |= previousHandle != link.handle
+        dirty |= handleChanged
                 || !Objects.equals(previousStart, bodyKeyOrNull(link.startBody))
                 || !Objects.equals(previousEnd, bodyKeyOrNull(link.endBody));
     }
@@ -129,11 +125,10 @@ public final class AttachedSubLevelScopeRegistry {
         link.startBody = null;
         link.endBody = null;
 
-        Map<UUID, Object> subLevelCache = subLevelCache(level);
         for (Object attachment : attachments.get()) {
             Object attachmentPoint = reflectNoArg(attachment, "point").orElse(null);
             Object subLevelId = reflectNoArg(attachment, "subLevelID").orElse(null);
-            Object subLevel = subLevelByUuid(level, subLevelCache, subLevelId).orElse(null);
+            Object subLevel = subLevelByUuid(level, subLevelId).orElse(null);
             if (subLevel == null) {
                 continue;
             }
@@ -146,10 +141,7 @@ public final class AttachedSubLevelScopeRegistry {
             }
         }
 
-        simulatedRopeConstraint(rope).ifPresent(handle -> link.handle = handle);
-        if (link.handle != null) {
-            ROPES_BY_HANDLE.put(link.handle, link);
-        }
+        simulatedRopeConstraint(rope).ifPresent(handle -> setRopeHandle(link, handle));
         logRopeState("simulated-rope", "SNAPSHOT", link);
         dirty |= !Objects.equals(previousStart, bodyKeyOrNull(link.startBody))
                 || !Objects.equals(previousEnd, bodyKeyOrNull(link.endBody))
@@ -167,12 +159,8 @@ public final class AttachedSubLevelScopeRegistry {
             return;
         }
 
-        Object previousHandle = link.handle;
-        simulatedRopeConstraint(rope).ifPresent(handle -> link.handle = handle);
-        if (link.handle != null) {
-            ROPES_BY_HANDLE.put(link.handle, link);
-        }
-        if (previousHandle != link.handle) {
+        Optional<Object> handle = simulatedRopeConstraint(rope);
+        if (handle.isPresent() && setRopeHandle(link, handle.get())) {
             dirty = true;
         }
     }
@@ -183,8 +171,7 @@ public final class AttachedSubLevelScopeRegistry {
             return;
         }
 
-        ROPES_BY_HANDLE.remove(link.handle);
-        link.handle = null;
+        setRopeHandle(link, null);
         dirty = true;
     }
 
@@ -262,7 +249,7 @@ public final class AttachedSubLevelScopeRegistry {
         return String.valueOf(reflectNoArg(attachmentPoint, "name").orElse(null));
     }
 
-    static synchronized Optional<Object> componentIdentity(Object level, Object subLevel) {
+    static synchronized Optional<Object> componentIdentity(Object subLevel) {
         Optional<BodyKey> origin = bodyKey(subLevel);
         if (origin.isEmpty()) {
             return Optional.empty();
@@ -274,12 +261,11 @@ public final class AttachedSubLevelScopeRegistry {
     }
 
     private static void rebuildComponentsIfDirty() {
-        if (!dirty) {
+        boolean prunedInvalidEntries = pruneInvalidEdges() | pruneInvalidRopes();
+        if (!dirty && !prunedInvalidEntries) {
             return;
         }
 
-        pruneInvalidEdges();
-        pruneInvalidRopes();
         COMPONENT_BY_BODY.clear();
 
         Set<BodyKey> remaining = new HashSet<>();
@@ -336,21 +322,17 @@ public final class AttachedSubLevelScopeRegistry {
         dirty = false;
     }
 
-    private static void pruneInvalidEdges() {
-        EDGES.removeIf(edge -> !edge.isValid());
+    private static boolean pruneInvalidEdges() {
+        return EDGES.removeIf(edge -> !edge.isValid());
     }
 
-    private static void pruneInvalidRopes() {
-        ROPES.values().removeIf(rope -> !rope.isValid());
-        ROPES_BY_HANDLE.values().removeIf(rope -> !rope.isValid() || !ROPES.containsValue(rope));
+    private static boolean pruneInvalidRopes() {
+        boolean removedRopes = ROPES.values().removeIf(rope -> !rope.isValid());
+        boolean removedHandles = ROPES_BY_HANDLE.values().removeIf(rope -> !rope.isValid() || !ROPES.containsValue(rope));
+        return removedRopes || removedHandles;
     }
 
     private static Optional<BodyKey> bodyKey(Object body) {
-        BodyKey cached = BODY_KEYS.get(body);
-        if (cached != null) {
-            return Optional.of(cached);
-        }
-
         Optional<Integer> runtimeId = intNoArg(body, "getRuntimeId");
         if (runtimeId.isEmpty()) {
             return Optional.empty();
@@ -361,9 +343,7 @@ public final class AttachedSubLevelScopeRegistry {
             return Optional.empty();
         }
 
-        BodyKey key = new BodyKey(dimensionKey(level), runtimeId.get());
-        BODY_KEYS.put(body, key);
-        return Optional.of(key);
+        return Optional.of(new BodyKey(dimensionKey(level), runtimeId.get()));
     }
 
     private static BodyKey bodyKeyOrNull(Object body) {
@@ -389,18 +369,9 @@ public final class AttachedSubLevelScopeRegistry {
         return active.orElse(true) instanceof Boolean value ? value : true;
     }
 
-    private static Optional<Object> subLevelByUuid(Object level, Map<UUID, Object> subLevelCache, Object id) {
+    private static Optional<Object> subLevelByUuid(Object level, Object id) {
         if (!(id instanceof UUID uuid)) {
             return Optional.empty();
-        }
-
-        Object cachedSubLevel = subLevelCache.get(uuid);
-        if (cachedSubLevel != null) {
-            if (isServerSubLevel(cachedSubLevel) && !isRemoved(cachedSubLevel)) {
-                return Optional.of(cachedSubLevel);
-            }
-
-            subLevelCache.remove(uuid);
         }
 
         Optional<Object> container = subLevelContainer(level);
@@ -415,18 +386,13 @@ public final class AttachedSubLevelScopeRegistry {
             }
             Method method = cached.get();
             Object subLevel = method.invoke(container.get(), uuid);
-            if (isServerSubLevel(subLevel)) {
-                subLevelCache.put(uuid, subLevel);
+            if (isServerSubLevel(subLevel) && !isRemoved(subLevel)) {
                 return Optional.of(subLevel);
             }
             return Optional.empty();
         } catch (ReflectiveOperationException | RuntimeException ignored) {
             return Optional.empty();
         }
-    }
-
-    private static Map<UUID, Object> subLevelCache(Object level) {
-        return SUB_LEVELS_BY_UUID_BY_LEVEL.computeIfAbsent(level, ignored -> new HashMap<>());
     }
 
     private static Optional<Object> subLevelContainer(Object level) {
@@ -477,9 +443,25 @@ public final class AttachedSubLevelScopeRegistry {
         }
 
         Optional<Object> handle = simulatedRopeConstraint(link.rope).or(() -> reflectField(link.rope, "handle"));
-        if (handle.isPresent()) {
-            link.handle = handle.get();
+        handle.ifPresent(value -> setRopeHandle(link, value));
+    }
+
+    private static boolean setRopeHandle(RopeLink link, Object handle) {
+        if (link.handle == handle) {
+            if (handle != null) {
+                ROPES_BY_HANDLE.put(handle, link);
+            }
+            return false;
         }
+
+        if (link.handle != null) {
+            ROPES_BY_HANDLE.remove(link.handle);
+        }
+        link.handle = handle;
+        if (handle != null) {
+            ROPES_BY_HANDLE.put(handle, link);
+        }
+        return true;
     }
 
     private static void logRopeState(String source, Object attachmentPoint, RopeLink link) {
@@ -551,18 +533,6 @@ public final class AttachedSubLevelScopeRegistry {
     }
 
     private record Edge(BodyKey first, BodyKey second, Object firstBody, Object secondBody, Object handle) {
-        Optional<BodyKey> other(BodyKey body) {
-            if (first.equals(body)) {
-                return Optional.of(second);
-            }
-
-            if (second.equals(body)) {
-                return Optional.of(first);
-            }
-
-            return Optional.empty();
-        }
-
         boolean isValid() {
             return isValidHandle(handle) && !isRemoved(firstBody) && !isRemoved(secondBody);
         }
@@ -576,26 +546,6 @@ public final class AttachedSubLevelScopeRegistry {
 
         private RopeLink(Object rope) {
             this.rope = rope;
-        }
-
-        Optional<BodyKey> other(BodyKey body) {
-            Optional<RopeBodyKeys> keys = bodyKeys();
-            if (keys.isEmpty()) {
-                return Optional.empty();
-            }
-
-            BodyKey start = keys.get().first();
-            BodyKey end = keys.get().second();
-
-            if (start.equals(body)) {
-                return Optional.of(end);
-            }
-
-            if (end.equals(body)) {
-                return Optional.of(start);
-            }
-
-            return Optional.empty();
         }
 
         Optional<RopeBodyKeys> bodyKeys() {

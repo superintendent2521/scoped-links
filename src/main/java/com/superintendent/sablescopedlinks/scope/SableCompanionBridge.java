@@ -20,7 +20,7 @@ final class SableCompanionBridge {
     private Constructor<?> boundingBox3dConstructor;
     private Constructor<?> vector3dConstructor;
     private boolean getContainingAcceptsBlockPos;
-    private boolean available;
+    private volatile boolean available;
 
     boolean isAvailable() {
         init();
@@ -43,7 +43,7 @@ final class SableCompanionBridge {
             }
             return Optional.ofNullable(result);
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            SableScopedLinks.LOGGER.warn("Sable getContaining(level, pos) failed; falling back to ordinary-world scope", exception);
+            invalidate("Sable getContaining(level, pos) failed; treating the companion API as unresolved", exception);
             return Optional.empty();
         }
     }
@@ -67,7 +67,7 @@ final class SableCompanionBridge {
                 }
             }
         } catch (ReflectiveOperationException | RuntimeException exception) {
-            SableScopedLinks.LOGGER.warn("Sable physical sub-level lookup failed; falling back to tracked entity scope", exception);
+            invalidate("Sable physical sub-level lookup failed; treating the companion API as unresolved", exception);
         }
 
         return Optional.empty();
@@ -119,6 +119,11 @@ final class SableCompanionBridge {
             SableScopedLinks.LOGGER.warn("Sable projected redstone link range check failed; falling back to ordinary Create range", exception);
             return Optional.empty();
         }
+    }
+
+    private void invalidate(String message, Exception exception) {
+        available = false;
+        SableScopedLinks.LOGGER.warn(message, exception);
     }
 
     private void init() {
