@@ -4,6 +4,8 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.superintendent.sablescopedlinks.SableScopedLinks;
@@ -13,6 +15,7 @@ final class SableCompanionBridge {
     private static final String SABLE_COMPANION_CLASS = "dev.ryanhcode.sable.companion.SableCompanion";
 
     private final AtomicBoolean initialized = new AtomicBoolean();
+    private final ConcurrentMap<Class<?>, Optional<Method>> getContainingObjectMethods = new ConcurrentHashMap<>();
     private Object companion;
     private Method getContaining;
     private Method getAllIntersecting;
@@ -44,6 +47,31 @@ final class SableCompanionBridge {
             return Optional.ofNullable(result);
         } catch (ReflectiveOperationException | RuntimeException exception) {
             invalidate("Sable getContaining(level, pos) failed; treating the companion API as unresolved", exception);
+            return Optional.empty();
+        }
+    }
+
+    Optional<Object> getContaining(Object locatedObject) {
+        init();
+        if (!available || locatedObject == null) {
+            return Optional.empty();
+        }
+
+        Optional<Method> method = getContainingObjectMethods.computeIfAbsent(
+                locatedObject.getClass(),
+                objectType -> findGetContainingMethod(companion.getClass(), objectType));
+        if (method.isEmpty()) {
+            return Optional.empty();
+        }
+
+        try {
+            Object result = method.get().invoke(companion, locatedObject);
+            if (result instanceof Optional<?> optional) {
+                return optional.map(Object.class::cast);
+            }
+            return Optional.ofNullable(result);
+        } catch (ReflectiveOperationException | RuntimeException exception) {
+            SableScopedLinks.LOGGER.warn("Sable getContaining(object) failed; falling back to position lookup", exception);
             return Optional.empty();
         }
     }
@@ -213,6 +241,29 @@ final class SableCompanionBridge {
         }
 
         return Optional.empty();
+    }
+
+    private Optional<Method> findGetContainingMethod(Class<?> type, Class<?> locatedObjectType) {
+        Method bestMatch = null;
+        for (Method method : type.getMethods()) {
+            if (!method.getName().equals("getContaining") || method.getParameterCount() != 1) {
+                continue;
+            }
+
+            Class<?> parameterType = method.getParameterTypes()[0];
+            if (!parameterType.isAssignableFrom(locatedObjectType)) {
+                continue;
+            }
+
+            if (bestMatch == null || bestMatch.getParameterTypes()[0].isAssignableFrom(parameterType)) {
+                bestMatch = method;
+            }
+        }
+
+        if (bestMatch != null) {
+            bestMatch.setAccessible(true);
+        }
+        return Optional.ofNullable(bestMatch);
     }
 
     private Optional<Method> findProjectOutOfSubLevelMethod(Class<?> type) {

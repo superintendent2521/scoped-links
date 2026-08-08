@@ -63,6 +63,8 @@ dependencies {
     localRuntime "maven.modrinth:LNytGWDc:${create_modrinth_version}"
     localRuntime "maven.modrinth:T9PomCSv:${sable_modrinth_version}"
     localRuntime "maven.modrinth:oWaK0Q19:${aeronautics_modrinth_version}"
+    // Always load Dashpanels in development runs so its optional compatibility is exercised.
+    localRuntime "maven.modrinth:xZJfGh82:${dashpanels_modrinth_version}"
 
     compileOnly fileTree(dir: 'libs', include: ['*.jar'])
     localRuntime fileTree(dir: 'libs', include: ['*.jar'])

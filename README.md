@@ -27,6 +27,10 @@ Modes:
 
 The bridge binds Sable through its companion service API when available, then falls back to known companion class names.
 
+## Compatibility
+
+Dashpanels/Control Panels panel-link entries are resolved through their owning panel-link block entity, so their Create signals obey the same Sable sub-level communication rules as ordinary redstone links. Dashpanels remains optional.
+
 ## Build Notes
 
 This project targets Minecraft `1.21.1`, NeoForge `21.1.x`, and Create `6.0.x`. Building requires JDK 21.
@@ -36,6 +40,7 @@ The Gradle project pulls the NeoForge/Minecraft dev environment and the required
 - Create: `6.0.10+mc1.21.1`
 - Sable NeoForge: `NGuyFOeE` (`2.0.0+mc1.21.1`)
 - Create Aeronautics NeoForge bundled: `w7zlLnea` (`1.3.0+mc1.21.1`)
+- Dashpanels: `2.1+neoforge1.21.1` (local development runtime only)
 
 For extra local jars, put them in either `libs/` or `run/mods/`. Gradle includes every `libs/*.jar` on the compile classpath and includes both folders on the local runtime classpath.
 

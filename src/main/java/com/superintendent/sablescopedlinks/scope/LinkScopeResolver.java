@@ -15,6 +15,8 @@ import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.phys.Vec3;
 
 public final class LinkScopeResolver {
+    private static final String DASHPANELS_MODULE_ENTRY =
+            "moth.boxxed.panels.compat.create.panel_link.ModuleLinkEntries$ModuleEntry";
     private static final SableCompanionBridge SABLE = new SableCompanionBridge();
     private static final ThreadLocal<LinkScope> LINKED_CONTROLLER_SCOPE = new ThreadLocal<>();
     private static final ThreadLocal<Integer> LINKED_CONTROLLER_PROJECTED_RANGE_DEPTH = new ThreadLocal<>();
@@ -189,12 +191,23 @@ public final class LinkScopeResolver {
     }
 
     private static LinkScope resolveScopeFor(Object fallbackWorld, Object actor) {
-        Object world = firstPresent(reflectNoArg(actor, "getWorld"), Optional.ofNullable(fallbackWorld)).orElse(null);
+        Optional<Object> owningBlockEntity = dashpanelsOwningBlockEntity(actor);
+        Object world = firstPresent(
+                reflectNoArg(actor, "getWorld"),
+                owningBlockEntity.flatMap(owner -> reflectNoArg(owner, "getLevel")),
+                Optional.ofNullable(fallbackWorld)).orElse(null);
         Object dimension = dimensionKey(world);
-        Optional<BlockPos> pos = blockPosFor(actor);
+        Optional<BlockPos> pos = firstPresent(
+                owningBlockEntity.flatMap(LinkScopeResolver::blockPosFor),
+                blockPosFor(actor));
 
         if (world == null || pos.isEmpty()) {
             return LinkScope.world(dimension, SABLE.isAvailable());
+        }
+
+        Optional<Object> ownerSubLevel = owningBlockEntity.flatMap(SABLE::getContaining);
+        if (ownerSubLevel.isPresent()) {
+            return LinkScope.subLevel(dimension, subLevelScopeIdentity(ownerSubLevel.get()));
         }
 
         Optional<Object> subLevel = SABLE.getContaining(world, pos.get());
@@ -208,6 +221,14 @@ public final class LinkScopeResolver {
         }
 
         return LinkScope.world(dimension, SABLE.isAvailable());
+    }
+
+    private static Optional<Object> dashpanelsOwningBlockEntity(Object actor) {
+        if (actor == null || !actor.getClass().getName().equals(DASHPANELS_MODULE_ENTRY)) {
+            return Optional.empty();
+        }
+
+        return CachedReflection.readDeclaredField(actor, "parentalBE");
     }
 
     private static boolean scopesMayCommunicate(RedstoneLinkSubLevelScope mode, LinkScope fromScope, LinkScope toScope) {
