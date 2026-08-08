@@ -29,7 +29,7 @@ The bridge binds Sable through its companion service API when available, then fa
 
 ## Compatibility
 
-Dashpanels/Control Panels panel-link entries are resolved through their owning panel-link block entity, so their Create signals obey the same Sable sub-level communication rules as ordinary redstone links. Dashpanels remains optional.
+[Dashpanels](https://modrinth.com/mod/dashpanels)
 
 ## Build Notes
 
