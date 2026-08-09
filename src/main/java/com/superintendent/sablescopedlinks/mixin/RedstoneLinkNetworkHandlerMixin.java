@@ -18,6 +18,18 @@ import net.minecraft.world.level.LevelAccessor;
 public abstract class RedstoneLinkNetworkHandlerMixin {
     private static final ThreadLocal<Object> sableScopedLinks$currentWorld = new ThreadLocal<>();
 
+    @Inject(method = "addToNetwork", at = @At("HEAD"), cancellable = true, remap = false)
+    private void sableScopedLinks$coalesceDashpanelsRefreshes(
+            LevelAccessor world,
+            @Coerce Object actor,
+            CallbackInfo ci) {
+        RedstoneLinkSubLevelScope mode = SableScopedLinksConfig.REDSTONE_LINK_SUB_LEVEL_SCOPE.get();
+        if (mode != RedstoneLinkSubLevelScope.VANILLA_CREATE
+                && RedstoneLinkNetworkProxy.shouldSkipRedundantDashpanelsAdd(this, world, actor)) {
+            ci.cancel();
+        }
+    }
+
     @Inject(method = "updateNetworkOf", at = @At("HEAD"), cancellable = true, remap = false)
     private void sableScopedLinks$captureWorld(LevelAccessor world, @Coerce Object actor, CallbackInfo ci) {
         RedstoneLinkSubLevelScope mode = SableScopedLinksConfig.REDSTONE_LINK_SUB_LEVEL_SCOPE.get();

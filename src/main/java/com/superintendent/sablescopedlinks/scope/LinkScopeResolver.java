@@ -223,8 +223,12 @@ public final class LinkScopeResolver {
         return LinkScope.world(dimension, SABLE.isAvailable());
     }
 
+    public static boolean isDashpanelsModuleEntry(Object actor) {
+        return actor != null && actor.getClass().getName().equals(DASHPANELS_MODULE_ENTRY);
+    }
+
     private static Optional<Object> dashpanelsOwningBlockEntity(Object actor) {
-        if (actor == null || !actor.getClass().getName().equals(DASHPANELS_MODULE_ENTRY)) {
+        if (!isDashpanelsModuleEntry(actor)) {
             return Optional.empty();
         }
 

@@ -4,6 +4,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.Iterator;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.LevelAccessor;
 public final class RedstoneLinkNetworkProxy {
     private static final AtomicBoolean LOGGED_MISSING_FREQUENCY = new AtomicBoolean();
     private static final AtomicBoolean LOGGED_NETWORK_INSPECTION_FAILURE = new AtomicBoolean();
+    private static final ThreadLocal<DashpanelsAddBatch> DASHPANELS_ADD_BATCH = new ThreadLocal<>();
     private static volatile int cachedCreateLinkRange = -1;
 
     private RedstoneLinkNetworkProxy() {
@@ -35,6 +37,33 @@ public final class RedstoneLinkNetworkProxy {
         } finally {
             LinkScopeResolver.exitScopeCache();
         }
+    }
+
+    public static boolean shouldSkipRedundantDashpanelsAdd(Object handler, LevelAccessor world, Object actor) {
+        if (!LinkScopeResolver.isDashpanelsModuleEntry(actor)) {
+            return false;
+        }
+
+        Optional<Object> gameTimeValue = CachedReflection.invokeNoArg(world, "getGameTime");
+        if (gameTimeValue.orElse(null) instanceof Number gameTime) {
+            Set<?> network = getNetworkOf(handler, world, actor);
+            boolean alreadyRegistered = network.contains(actor);
+
+            DashpanelsAddBatch batch = DASHPANELS_ADD_BATCH.get();
+            if (batch == null || batch.world != world || batch.gameTime != gameTime.longValue()) {
+                batch = new DashpanelsAddBatch(world, gameTime.longValue());
+                DASHPANELS_ADD_BATCH.set(batch);
+            }
+
+            if (!alreadyRegistered) {
+                batch.updatedNetworks.add(network);
+                return false;
+            }
+
+            return !batch.updatedNetworks.add(network);
+        }
+
+        return false;
     }
 
     private static void updateNetworkCached(Object handler, LevelAccessor world, Object actor, RedstoneLinkSubLevelScope mode) {
@@ -481,5 +510,16 @@ public final class RedstoneLinkNetworkProxy {
     }
 
     private record RangeCheck(boolean inRange, boolean usedSableProjection) {
+    }
+
+    private static final class DashpanelsAddBatch {
+        private final Object world;
+        private final long gameTime;
+        private final Set<Object> updatedNetworks = Collections.newSetFromMap(new IdentityHashMap<>());
+
+        private DashpanelsAddBatch(Object world, long gameTime) {
+            this.world = world;
+            this.gameTime = gameTime;
+        }
     }
 }
